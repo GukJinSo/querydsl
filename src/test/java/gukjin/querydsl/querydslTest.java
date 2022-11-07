@@ -1,15 +1,19 @@
 package gukjin.querydsl;
 
+import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
 import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Predicate;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import gukjin.querydsl.dto.MemberDto;
+import gukjin.querydsl.dto.QMemberDto;
 import gukjin.querydsl.dto.UserDto;
 import gukjin.querydsl.entity.Member;
 import gukjin.querydsl.entity.QMember;
@@ -399,23 +403,148 @@ class querydslTest {
 
     @Test
     public void findDtoByQuerydslNoMatching() throws Exception {
-QMember subMember = new QMember("subMember");
-List<UserDto> results = queryFactory
-    .select(Projections.fields(UserDto.class,
-        member.id,
-        member.username.as("name"),
-        ExpressionUtils.as(JPAExpressions
-            .select(subMember.age.max())
-            .from(subMember), "age")
-        ))
-    .from(member)
-    .fetch();
+        QMember subMember = new QMember("subMember");
+        List<UserDto> results = queryFactory
+            .select(Projections.fields(UserDto.class,
+                member.id,
+                member.username.as("name"),
+                ExpressionUtils.as(JPAExpressions
+                    .select(subMember.age.max())
+                    .from(subMember), "age")
+                ))
+            .from(member)
+            .fetch();
 
         for (UserDto result : results) {
             System.out.println("result = " + result);
         }
     }
 
+    @Test
+    public void qtypeDto() throws Exception {
+        List<MemberDto> result = queryFactory
+                .select(new QMemberDto(member.id, member.username))
+                .from(member)
+                .fetch();
+
+        for (MemberDto memberDto : result) {
+            System.out.println("memberDto = " + memberDto);
+        }
+    }
+
+    @Test
+    public void dynamicQueryUsingBooleanBuilder() throws Exception {
+        String usernameParam = "member1";
+        Integer ageParam = 10;
+
+        List<MemberDto> result = booleanBuilderSearch(usernameParam, ageParam);
+
+        for (MemberDto memberDto : result) {
+            System.out.println("memberDto = " + memberDto);
+        }
+    }
+
+    List<MemberDto> booleanBuilderSearch(String usernameParam, Integer ageParam){
+        BooleanBuilder builder = new BooleanBuilder();
+
+        if(usernameParam != null){
+            builder.and(member.username.eq(usernameParam));
+        }
+        if(ageParam != null){
+            builder.and(member.age.eq(ageParam));
+        }
+
+        return queryFactory
+                .select(new QMemberDto(member.id, member.username))
+                .from(member)
+                .where(builder)
+                .fetch();
+    }
+
+    @Test
+    public void dynamicQueryUsingWhereMulti() throws Exception {
+        String usernameParam = "member1";
+        Integer ageParam = 10;
+
+        List<MemberDto> result = WhereMultiParamSearch(usernameParam, ageParam);
+
+        for (MemberDto memberDto : result) {
+            System.out.println("memberDto = " + memberDto);
+        }
+    }
+
+    List<MemberDto> WhereMultiParamSearch(String usernameParam, Integer ageParam){
+
+        return queryFactory
+                .select(new QMemberDto(member.id, member.username))
+                .from(member)
+                .where(usernameEq(usernameParam), ageEq(ageParam))
+                .fetch();
+    }
+
+    private BooleanExpression usernameEq(String usernameParam) {
+        return usernameParam == null ? null : member.username.eq(usernameParam);
+    }
+
+    private BooleanExpression ageEq(Integer ageParam) {
+        return ageParam == null ? null : member.age.eq(ageParam);
+    }
+
+    private BooleanExpression allEq(String usernameParam, Integer ageParam){
+        return usernameEq(usernameParam).and(ageEq(ageParam));
+    }
+
+    @Test
+    public void bulkUpdate() throws Exception {
+
+        long 비회원 = queryFactory
+                .update(member)
+                .set(member.username, "비회원")
+                .where(member.age.lt(28))
+                .execute(); // long : 영향을 받은 행 수
+
+        List<Member> fetch = queryFactory.select(member)
+                .from(member)
+                .fetch();
+
+        for (Member fetch1 : fetch) {
+            System.out.println("fetch1 = " + fetch1);
+        }
+    }
+
+    @Test
+    public void bulkAdd() throws Exception {
+        long 비회원 = queryFactory
+                .update(member)
+                .set(member.age, member.age.add(-1)) // add(음수, 양수) / multiply(양수)
+                .where(member.age.lt(28))
+                .execute();
+    }
+
+    @Test
+    public void bulkDelete() throws Exception {
+        long 비회원 = queryFactory
+                .delete(member)
+                .where(member.age.lt(28))
+                .execute();
+    }
+
+    @Test
+    public void sqlFunction() throws Exception {
+        List<String> fetch = queryFactory
+                .select(
+                        Expressions.stringTemplate(
+                        "function('upper', {0})",
+                        member.username))
+                        // member.username.upper()) 와 같다. ANSI 표준 함수들은 querydsl 자체적으로 대부분 구현해놓았다.
+                .from(member)
+                .fetch();
+
+        for (String s : fetch) {
+            System.out.println("s = " + s);
+        }
+
+    }
 
 
 }
